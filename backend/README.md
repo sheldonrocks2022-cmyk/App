@@ -1,16 +1,12 @@
 # ESN Hub Backend
+Native ESN accounts use email/password plus a hashed security-question answer for recovery. Passwords and recovery answers are never stored in plaintext.
 
-Production-oriented authentication foundation for ESN Hub.
+## Required production environment
+- ESN_SESSION_SECRET: long random secret; required to keep sessions valid across restarts.
+- ESN_ADMIN_EMAIL: the owner's ESN account email. Only this exact registered account is promoted to admin.
+- ESN_MEMBER_DATA_FILE: durable mounted storage path.
+- PORT: optional (8080 default).
 
-## Endpoints
-- GET /health
-- POST /v1/auth/google
+Admin access is role-checked on the server. There is no hard-coded admin password or client-side admin bypass. Register the owner's account normally using the configured ESN_ADMIN_EMAIL; the server assigns its admin role.
 
-The Google endpoint verifies the ID token with Google's verification library using GOOGLE_WEB_CLIENT_ID as the required audience, then creates or retrieves a stable ESN member ID.
-
-## Environment
-- GOOGLE_WEB_CLIENT_ID (required for authentication)
-- PORT (optional, defaults to 8080)
-- ESN_MEMBER_DATA_FILE (optional; defaults to /tmp/esn-members.json)
-
-The included file member store is suitable for initial deployment/testing only. Before credits, purchases, staff roles, or rewards go live, replace it with a durable managed database and transactions. Never treat Android-side balances or roles as authoritative.
+Endpoints: POST /v1/auth/register, POST /v1/auth/login, POST /v1/auth/recovery-question, POST /v1/auth/reset-password, GET /v1/auth/session, GET /v1/admin/members.
