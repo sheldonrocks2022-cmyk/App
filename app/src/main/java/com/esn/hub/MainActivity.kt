@@ -5,6 +5,12 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.util.Base64
+import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
@@ -50,7 +56,9 @@ private val EsnColors = darkColorScheme(
     surface = Panel, onPrimary = DeepNavy, onBackground = White, onSurface = White
 )
 
-private data class UserSession(val id: String, val name: String, val email: String)
+private data class UserSession(val id: String, val name: String, val email: String, val esnMemberId: String? = null)
+
+private data class GoogleAuthResult(val user: UserSession, val idToken: String)
 private data class HubAction(val title: String, val subtitle: String, val icon: ImageVector, val tab: Int)
 private data class Feature(val title: String, val subtitle: String, val icon: ImageVector)
 
@@ -58,9 +66,19 @@ private class SessionStore(context: Context) {
     private val prefs = context.getSharedPreferences("esn_session", Context.MODE_PRIVATE)
     fun load(): UserSession? {
         val id = prefs.getString("id", null) ?: return null
-        return UserSession(id, prefs.getString("name", "ESN Member") ?: "ESN Member", prefs.getString("email", "") ?: "")
+        return UserSession(
+            id,
+            prefs.getString("name", "ESN Member") ?: "ESN Member",
+            prefs.getString("email", "") ?: "",
+            prefs.getString("esn_member_id", null)
+        )
     }
-    fun save(user: UserSession) = prefs.edit().putString("id", user.id).putString("name", user.name).putString("email", user.email).apply()
+    fun save(user: UserSession) = prefs.edit()
+        .putString("id", user.id)
+        .putString("name", user.name)
+        .putString("email", user.email)
+        .putString("esn_member_id", user.esnMemberId)
+        .apply()
     fun clear() = prefs.edit().clear().apply()
 }
 
@@ -89,8 +107,15 @@ private fun EsnHubApp(activity: Activity) {
         authBusy = true
         authMessage = null
         scope.launch {
-            runCatching { googleSignIn(activity) }
-                .onSuccess { store.save(it); user = it; authMessage = "Google account connected." }
+            runCatching {
+                val google = googleSignIn(activity)
+                val linked = linkEsnAccount(google)
+                linked
+            }.onSuccess {
+                store.save(it)
+                user = it
+                authMessage = if (it.esnMemberId == null) "Google account connected. ESN backend is not configured yet." else "Google account connected to ESN member " + it.esnMemberId + "."
+            }
                 .onFailure { authMessage = it.message ?: "Google sign-in could not be completed." }
             authBusy = false
         }
@@ -135,7 +160,7 @@ private fun EsnHubApp(activity: Activity) {
     }
 }
 
-private suspend fun googleSignIn(activity: Activity): UserSession {
+private suspend fun googleSignIn(activity: Activity): GoogleAuthResult {
     val option = GetSignInWithGoogleOption.Builder(BuildConfig.GOOGLE_WEB_CLIENT_ID).build()
     val request = GetCredentialRequest.Builder().addCredentialOption(option).build()
     val credential = CredentialManager.create(activity).getCredential(activity, request).credential
@@ -143,7 +168,36 @@ private suspend fun googleSignIn(activity: Activity): UserSession {
     val google = GoogleIdTokenCredential.createFrom(credential.data)
     val email = google.email.orEmpty()
     val name = google.displayName ?: google.givenName ?: email.substringBefore("@").ifBlank { "ESN Member" }
-    return UserSession(google.id, name, email)
+    return GoogleAuthResult(UserSession(google.id, name, email), google.idToken)
+}
+
+private suspend fun linkEsnAccount(auth: GoogleAuthResult): UserSession = withContext(Dispatchers.IO) {
+    val baseUrl = BuildConfig.ESN_API_BASE_URL.trim().trimEnd('/')
+    if (baseUrl.isBlank()) return@withContext auth.user
+
+    val connection = (URL(baseUrl + "/v1/auth/google").openConnection() as HttpURLConnection).apply {
+        requestMethod = "POST"
+        connectTimeout = 10_000
+        readTimeout = 10_000
+        doOutput = true
+        setRequestProperty("Content-Type", "application/json")
+        setRequestProperty("Accept", "application/json")
+    }
+
+    try {
+        val body = JSONObject().put("idToken", auth.idToken).toString()
+        connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+        val status = connection.responseCode
+        if (status !in 200..299) error("ESN account link failed with status " + status + ".")
+
+        val response = connection.inputStream.bufferedReader().use { it.readText() }
+        val json = JSONObject(response)
+        val memberId = json.optString("memberId").takeIf { it.isNotBlank() }
+            ?: error("ESN backend did not return a memberId.")
+        auth.user.copy(esnMemberId = memberId)
+    } finally {
+        connection.disconnect()
+    }
 }
 
 private fun openWebsite(context: Context) {
