@@ -1,27 +1,15 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import crypto from "node:crypto";
-
-const scrypt = (password,salt)=>new Promise((resolve,reject)=>crypto.scrypt(password,salt,64,(e,key)=>e?reject(e):resolve(key)));
-export class MemberStore {
+import fs from "node:fs/promises";import path from "node:path";import crypto from "node:crypto";
+const scrypt=(v,s)=>new Promise((r,j)=>crypto.scrypt(v,s,64,(e,k)=>e?j(e):r(k)));
+const normAnswer=v=>v.trim().toLocaleLowerCase().replace(/\s+/g," ");
+async function hash(v){const salt=crypto.randomBytes(16).toString("hex");return {salt,hash:(await scrypt(v,salt)).toString("hex")};}
+async function matches(v,salt,hex){const a=Buffer.from(hex,"hex"),b=Buffer.from(await scrypt(v,salt));return a.length===b.length&&crypto.timingSafeEqual(a,b);}
+export class MemberStore{
  constructor(file=process.env.ESN_MEMBER_DATA_FILE||"/tmp/esn-members.json"){this.file=file;}
  async load(){try{return JSON.parse(await fs.readFile(this.file,"utf8"));}catch(e){if(e.code==="ENOENT")return {members:[]};throw e;}}
- async save(data){await fs.mkdir(path.dirname(this.file),{recursive:true});const tmp=this.file+".tmp";await fs.writeFile(tmp,JSON.stringify(data,null,2),{mode:0o600});await fs.rename(tmp,this.file);}
- async register({email,password,name}){
-  const data=await this.load(); const normalized=email.trim().toLowerCase();
-  if(data.members.some(x=>x.email===normalized)) throw Object.assign(new Error("An account already exists for that email"),{status:409});
-  const salt=crypto.randomBytes(16).toString("hex"); const key=await scrypt(password,salt);
-  const member={memberId:"esn_"+crypto.randomUUID(),email:normalized,name:name.trim(),passwordHash:key.toString("hex"),passwordSalt:salt,createdAt:new Date().toISOString()};
-  data.members.push(member); await this.save(data); return member;
- }
- async authenticate({email,password}){
-  const data=await this.load(); const member=data.members.find(x=>x.email===email.trim().toLowerCase()&&x.passwordHash);
-  if(!member) return null; const key=await scrypt(password,member.passwordSalt);
-  const a=Buffer.from(member.passwordHash,"hex"),b=Buffer.from(key);
-  return a.length===b.length&&crypto.timingSafeEqual(a,b)?member:null;
- }
- async findOrCreate(identity){
-  const data=await this.load();let member=data.members.find(x=>x.googleSubject===identity.googleSubject);
-  if(!member){member={memberId:"esn_"+crypto.randomUUID(),googleSubject:identity.googleSubject,email:identity.email,name:identity.name,createdAt:new Date().toISOString()};data.members.push(member);await this.save(data);} return member;
- }
+ async save(d){await fs.mkdir(path.dirname(this.file),{recursive:true});const t=this.file+".tmp";await fs.writeFile(t,JSON.stringify(d,null,2),{mode:0o600});await fs.rename(t,this.file);}
+ async register({email,password,name,securityQuestion,securityAnswer}){const d=await this.load(),e=email.trim().toLowerCase();if(d.members.some(x=>x.email===e))throw Object.assign(new Error("An account already exists for that email"),{status:409});const p=await hash(password),a=await hash(normAnswer(securityAnswer));const m={memberId:"esn_"+crypto.randomUUID(),email:e,name:name.trim(),passwordHash:p.hash,passwordSalt:p.salt,securityQuestion:securityQuestion.trim(),securityAnswerHash:a.hash,securityAnswerSalt:a.salt,sessionVersion:1,createdAt:new Date().toISOString()};d.members.push(m);await this.save(d);return m;}
+ async authenticate({email,password}){const d=await this.load(),m=d.members.find(x=>x.email===email.trim().toLowerCase()&&x.passwordHash);return m&&await matches(password,m.passwordSalt,m.passwordHash)?m:null;}
+ async getSecurityQuestion(email){const d=await this.load(),m=d.members.find(x=>x.email===email.trim().toLowerCase()&&x.securityQuestion);return m?{memberId:m.memberId,question:m.securityQuestion}:null;}
+ async resetWithSecurityAnswer({email,securityAnswer,newPassword}){const d=await this.load(),m=d.members.find(x=>x.email===email.trim().toLowerCase()&&x.securityAnswerHash);if(!m||!await matches(normAnswer(securityAnswer),m.securityAnswerSalt,m.securityAnswerHash))return null;const p=await hash(newPassword);m.passwordHash=p.hash;m.passwordSalt=p.salt;m.sessionVersion=(m.sessionVersion||1)+1;await this.save(d);return m;}
+ async findOrCreate(i){const d=await this.load();let m=d.members.find(x=>x.googleSubject===i.googleSubject);if(!m){m={memberId:"esn_"+crypto.randomUUID(),googleSubject:i.googleSubject,email:i.email,name:i.name,sessionVersion:1,createdAt:new Date().toISOString()};d.members.push(m);await this.save(d);}return m;}
 }
