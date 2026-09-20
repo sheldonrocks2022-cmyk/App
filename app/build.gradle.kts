@@ -3,6 +3,12 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+val googleWebClientId = providers.gradleProperty("GOOGLE_WEB_CLIENT_ID")
+    .orElse(System.getenv("GOOGLE_WEB_CLIENT_ID") ?: "")
+    .get()
+    .replace("\\", "\\\\")
+    .replace("\"", "\\\"")
+
 android {
     namespace = "com.esn.hub"
     compileSdk = 36
@@ -11,8 +17,11 @@ android {
         applicationId = "com.esn.hub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+
+        buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
+        buildConfigField("String", "ESN_WEBSITE_URL", "\"https://esnoffical.com\"")
     }
 
     compileOptions {
@@ -42,6 +51,10 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.material:material-icons-extended")
+
+    implementation("androidx.credentials:credentials:1.7.0-alpha03")
+    implementation("androidx.credentials:credentials-play-services-auth:1.7.0-alpha03")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.2.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
