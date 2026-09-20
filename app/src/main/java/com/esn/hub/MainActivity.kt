@@ -141,7 +141,7 @@ private suspend fun googleSignIn(activity: Activity): UserSession {
     val credential = CredentialManager.create(activity).getCredential(activity, request).credential
     require(credential is CustomCredential) { "Unsupported Google credential." }
     val google = GoogleIdTokenCredential.createFrom(credential.data)
-    val email = google.email
+    val email = google.email.orEmpty()
     val name = google.displayName ?: google.givenName ?: email.substringBefore("@").ifBlank { "ESN Member" }
     return UserSession(google.id, name, email)
 }
