@@ -27,7 +27,9 @@ jobs:
       - name: Install dependencies
         run: npm install
       - name: Syntax check
-        run: node --check src/server.js && node --check src/services/googleAuth.js && node --check src/services/memberStore.js
+        run: node --check src/server.js && node --check src/services/googleAuth.js && node --check src/services/memberStore.js && node --check src/services/sessionTokens.js
+      - name: Authentication tests
+        run: npm test
       - name: Smoke test startup
         run: |
           node src/server.js &
