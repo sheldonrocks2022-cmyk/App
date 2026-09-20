@@ -3,11 +3,14 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val googleWebClientId = providers.gradleProperty("GOOGLE_WEB_CLIENT_ID")
-    .orElse(System.getenv("GOOGLE_WEB_CLIENT_ID") ?: "")
+fun buildStringConfig(name: String): String = providers.gradleProperty(name)
+    .orElse(System.getenv(name) ?: "")
     .get()
     .replace("\\", "\\\\")
     .replace("\"", "\\\"")
+
+val googleWebClientId = buildStringConfig("GOOGLE_WEB_CLIENT_ID")
+val esnApiBaseUrl = buildStringConfig("ESN_API_BASE_URL")
 
 android {
     namespace = "com.esn.hub"
@@ -22,6 +25,7 @@ android {
 
         buildConfigField("String", "GOOGLE_WEB_CLIENT_ID", "\"$googleWebClientId\"")
         buildConfigField("String", "ESN_WEBSITE_URL", "\"https://esnoffical.com\"")
+        buildConfigField("String", "ESN_API_BASE_URL", "\"$esnApiBaseUrl\"")
     }
 
     compileOptions {
