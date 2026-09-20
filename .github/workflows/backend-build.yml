@@ -1,0 +1,41 @@
+name: Backend Build
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-build.yml"
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-build.yml"
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - name: Install dependencies
+        run: npm install
+      - name: Syntax check
+        run: node --check src/server.js && node --check src/services/googleAuth.js && node --check src/services/memberStore.js
+      - name: Smoke test startup
+        run: |
+          node src/server.js &
+          PID=$!
+          trap "kill $PID" EXIT
+          sleep 2
+          curl --fail http://127.0.0.1:8080/health
+      - name: Build container
+        run: docker build -t esn-hub-backend:test .
