@@ -14,7 +14,7 @@ const pw=x=>typeof x==="string"&&x.length>=10&&x.length<=128;
 function limited(q,bucket,max=30,windowMs=900000){const key=(q.socket.remoteAddress||"unknown")+":"+bucket,now=Date.now();let e=attempts.get(key);if(!e||e.reset<now)e={count:0,reset:now+windowMs};e.count++;attempts.set(key,e);return e.count>max;}
 async function authenticated(q){const s=verifySession((q.headers.authorization||"").replace(/^Bearer\s+/i,""));if(!s)return null;const m=await members.getById(s.sub);return m&&(m.sessionVersion||1)===s.ver?m:null;}
 async function loginMember(b){const m=email(b.email)&&typeof b.password==="string"?await members.authenticate(b):null;if(!m)return null;if(m.email===adminEmail)await members.ensureAdmin(m.email);return members.getById(m.memberId);}
-function authPayload(m){return{memberId:m.memberId,name:m.name,email:m.email,role:m.role||"member",sessionToken:issueSession(m)};}
+function safe(m){return{memberId:m.memberId,name:m.name,email:m.email,role:m.role||"member",credits:m.credits||0,createdAt:m.createdAt};}\nfunction authPayload(m){return{...safe(m),sessionToken:issueSession(m)};}
 
 const server=http.createServer(async(q,r)=>{try{
     if(q.method==="GET"&&q.url==="/health")return json(r,200,{ok:true,service:"esn-hub-backend"});
@@ -41,8 +41,8 @@ const server=http.createServer(async(q,r)=>{try{
         const b=await body(q);if(!email(b.email)||!pw(b.newPassword)||typeof b.securityAnswer!=="string")return json(r,400,{error:"Invalid reset request"});
         const m=await members.resetWithSecurityAnswer(b);return m?json(r,200,{message:"Password reset successful"}):json(r,401,{error:"Recovery answer did not match"});
     }
-    if(q.method==="GET"&&q.url==="/v1/auth/session"){const m=await authenticated(q);return m?json(r,200,{memberId:m.memberId,email:m.email,name:m.name,role:m.role||"member"}):json(r,401,{error:"Invalid session"});}
-    if(q.method==="GET"&&q.url==="/v1/admin/members"){const m=await authenticated(q);if(!m||m.role!=="admin")return json(r,403,{error:"Admin access required"});return json(r,200,{members:await members.listSafe()});}
+    if(q.method==="GET"&&q.url==="/v1/auth/session"){const m=await authenticated(q);return m?json(r,200,safe(m)):json(r,401,{error:"Invalid session"});}\n    if(q.method==="PATCH"&&q.url==="/v1/account/profile"){const m=await authenticated(q);if(!m)return json(r,401,{error:"Invalid session"});const updated=await members.updateProfile(m.memberId,await body(q));return json(r,200,safe(updated));}
+    if(q.method==="GET"&&q.url==="/v1/admin/members"){const m=await authenticated(q);if(!m||m.role!=="admin")return json(r,403,{error:"Admin access required"});return json(r,200,{members:await members.listSafe()});}\n    if(q.method==="PATCH"&&q.url?.startsWith("/v1/admin/members/")){const admin=await authenticated(q);if(!admin||admin.role!=="admin")return json(r,403,{error:"Admin access required"});const id=decodeURIComponent(q.url.split("/")[4]||""),b=await body(q);if(id===admin.memberId&&b.role&&b.role!=="admin")return json(r,400,{error:"Owners cannot remove their own admin access"});let m=await members.getById(id);if(!m)return json(r,404,{error:"Member not found"});if(b.role!==undefined)m=await members.setRole(id,b.role);if(b.credits!==undefined)m=await members.setCredits(id,b.credits);return json(r,200,safe(await members.getById(id)));}
     return json(r,404,{error:"Not found"});
 }catch(e){const s=Number(e.status)||500;return json(r,s,{error:s>=500?"Server error":e.message});}});
 server.listen(port,"0.0.0.0",()=>console.log("ESN Hub backend listening on "+port));
