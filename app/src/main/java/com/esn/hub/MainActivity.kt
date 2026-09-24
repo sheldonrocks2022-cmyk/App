@@ -56,9 +56,9 @@ private val White=Color(0xFFF5FCFF)
 private val Green=Color(0xFF6EE7B7)
 private val EsnColors=darkColorScheme(primary=Cyan,secondary=Teal,background=DeepNavy,surface=Panel,onPrimary=DeepNavy,onBackground=White,onSurface=White)
 
-private data class UserSession(val memberId:String,val name:String,val email:String,val role:String="member")
+private data class UserSession(val memberId:String,val name:String,val email:String,val role:String="member",val credits:Int=0)
 private data class AuthResult(val user:UserSession,val token:String)
-private data class AdminMember(val memberId:String,val name:String,val email:String,val role:String,val createdAt:String)
+private data class AdminMember(val memberId:String,val name:String,val email:String,val role:String,val credits:Int,val createdAt:String)
 private data class HubAction(val title:String,val subtitle:String,val icon:ImageVector,val tab:Int)
 private data class Feature(val title:String,val subtitle:String,val icon:ImageVector)
 private enum class AuthMode{LOGIN,REGISTER,RECOVER}
@@ -68,9 +68,9 @@ private class SessionStore(context:Context){
     private val alias="esn_hub_session_key"
     fun loadUser():UserSession?{
         val id=prefs.getString("member_id",null)?:return null
-        return UserSession(id,prefs.getString("name","ESN Member")?:"ESN Member",prefs.getString("email","")?:"",prefs.getString("role","member")?:"member")
+        return UserSession(id,prefs.getString("name","ESN Member")?:"ESN Member",prefs.getString("email","")?:"",prefs.getString("role","member")?:"member",prefs.getInt("credits",0))
     }
-    fun saveUser(u:UserSession)=prefs.edit().putString("member_id",u.memberId).putString("name",u.name).putString("email",u.email).putString("role",u.role).apply()
+    fun saveUser(u:UserSession)=prefs.edit().putString("member_id",u.memberId).putString("name",u.name).putString("email",u.email).putString("role",u.role).putInt("credits",u.credits).apply()
     fun save(u:UserSession,token:String){saveUser(u);saveToken(token)}
     fun clear(){prefs.edit().clear().apply()}
     private fun key():SecretKey{
@@ -115,14 +115,14 @@ private class EsnApi{
             json
         }finally{c.disconnect()}
     }
-    private fun auth(j:JSONObject)=AuthResult(UserSession(j.getString("memberId"),j.optString("name","ESN Member"),j.getString("email"),j.optString("role","member")),j.getString("sessionToken"))
+    private fun auth(j:JSONObject)=AuthResult(UserSession(j.getString("memberId"),j.optString("name","ESN Member"),j.getString("email"),j.optString("role","member"),j.optInt("credits",0)),j.getString("sessionToken"))
     suspend fun register(name:String,email:String,password:String,question:String,answer:String)=auth(request("POST","/v1/auth/register",JSONObject().put("name",name).put("email",email).put("password",password).put("securityQuestion",question).put("securityAnswer",answer)))
     suspend fun login(email:String,password:String)=auth(request("POST","/v1/auth/login",JSONObject().put("email",email).put("password",password)))
     suspend fun adminLogin(email:String,password:String)=auth(request("POST","/v1/auth/admin-login",JSONObject().put("email",email).put("password",password)))
     suspend fun recoveryQuestion(email:String)=request("POST","/v1/auth/recovery-question",JSONObject().put("email",email)).getString("question")
     suspend fun resetPassword(email:String,answer:String,newPassword:String)=request("POST","/v1/auth/reset-password",JSONObject().put("email",email).put("securityAnswer",answer).put("newPassword",newPassword))
-    suspend fun session(token:String):UserSession{val j=request("GET","/v1/auth/session",token=token);return UserSession(j.getString("memberId"),j.optString("name","ESN Member"),j.getString("email"),j.optString("role","member"))}
-    suspend fun adminMembers(token:String):List<AdminMember>{val a=request("GET","/v1/admin/members",token=token).getJSONArray("members");return (0 until a.length()).map{val j=a.getJSONObject(it);AdminMember(j.getString("memberId"),j.optString("name","ESN Member"),j.getString("email"),j.optString("role","member"),j.optString("createdAt",""))}}
+    suspend fun session(token:String):UserSession{val j=request("GET","/v1/auth/session",token=token);return UserSession(j.getString("memberId"),j.optString("name","ESN Member"),j.getString("email"),j.optString("role","member"),j.optInt("credits",0))}
+    suspend fun adminMembers(token:String):List<AdminMember>{val a=request("GET","/v1/admin/members",token=token).getJSONArray("members");return (0 until a.length()).map{val j=a.getJSONObject(it);AdminMember(j.getString("memberId"),j.optString("name","ESN Member"),j.getString("email"),j.optString("role","member"),j.optInt("credits",0),j.optString("createdAt",""))}}
 }
 
 class MainActivity:ComponentActivity(){
@@ -200,7 +200,7 @@ private fun CreditsCard(user:UserSession?,click:()->Unit){
     Card(Modifier.fillMaxWidth(),shape=RoundedCornerShape(28.dp),colors=CardDefaults.cardColors(containerColor=Color.Transparent)){
         Column(Modifier.fillMaxWidth().background(Brush.linearGradient(listOf(Color(0xFF0B456B),Color(0xFF08747A),Color(0xFF113B64)))).border(1.dp,Cyan.copy(alpha=.5f),RoundedCornerShape(28.dp)).padding(22.dp)){
             Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.CreditCard,null,tint=Ice);Spacer(Modifier.width(8.dp));Text("ESN CREDITS",color=Ice,fontWeight=FontWeight.Black,letterSpacing=1.2.sp)}
-            Spacer(Modifier.height(12.dp));Text("0",color=White,fontSize=46.sp,fontWeight=FontWeight.Black);Text(if(user==null)"Sign in to connect your member account." else "Account connected • live balance sync is next.",color=White.copy(alpha=.78f),fontSize=13.sp)
+            Spacer(Modifier.height(12.dp));Text((user?.credits?:0).toString(),color=White,fontSize=46.sp,fontWeight=FontWeight.Black);Text(if(user==null)"Sign in to connect your member account." else "Live balance synced to your ESN account.",color=White.copy(alpha=.78f),fontSize=13.sp)
             Spacer(Modifier.height(16.dp));Button(onClick=click,colors=ButtonDefaults.buttonColors(containerColor=Ice,contentColor=DeepNavy),shape=RoundedCornerShape(14.dp)){Text(if(user==null)"CONNECT ACCOUNT" else "VIEW PROFILE",fontWeight=FontWeight.Black)}
         }
     }
@@ -320,7 +320,7 @@ private fun AdminDashboard(api:EsnApi,token:String){
             Row(verticalAlignment=Alignment.CenterVertically){Icon(Icons.Default.AdminPanelSettings,null,tint=Cyan);Spacer(Modifier.width(8.dp));Column(Modifier.weight(1f)){Text("ADMIN DASHBOARD",color=White,fontWeight=FontWeight.Black);Text("Server-verified owner controls",color=Muted,fontSize=11.sp)};Text(members.size.toString(),color=Cyan,fontWeight=FontWeight.Black,fontSize=22.sp)}
             Button(onClick={load()},enabled=!busy,colors=ButtonDefaults.buttonColors(containerColor=Cyan,contentColor=DeepNavy)){Text(if(busy)"REFRESHING..." else "REFRESH MEMBERS",fontWeight=FontWeight.Black)}
             status?.let{Text(it,color=Muted,fontSize=12.sp)}
-            members.take(10).forEach{m->HorizontalDivider(color=Cyan.copy(alpha=.12f));Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text(m.name,color=White,fontWeight=FontWeight.Bold);Text(m.email,color=Muted,fontSize=11.sp)};Text(m.role.uppercase(),color=if(m.role=="admin")Cyan else Green,fontSize=10.sp,fontWeight=FontWeight.Black)}}
+            members.take(10).forEach{m->HorizontalDivider(color=Cyan.copy(alpha=.12f));Row(Modifier.fillMaxWidth(),verticalAlignment=Alignment.CenterVertically){Column(Modifier.weight(1f)){Text(m.name,color=White,fontWeight=FontWeight.Bold);Text(m.email+" • "+m.credits+" credits",color=Muted,fontSize=11.sp)};Text(m.role.uppercase(),color=if(m.role=="admin")Cyan else Green,fontSize=10.sp,fontWeight=FontWeight.Black)}}
             if(members.size>10)Text("Showing first 10 of "+members.size+" accounts.",color=Muted,fontSize=11.sp)
         }
     }
