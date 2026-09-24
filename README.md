@@ -1,26 +1,34 @@
 # ESN Hub
 
-ESN Hub is the official Android community app for ESN.
+Official Android hub for ES Network.
 
-## Initial features
+## ESN Hub 1.0
 
-- Community home dashboard
-- ESN Credits balance and activity
-- Store preview
-- Invite rewards
-- Announcements
-- Tickets and support shortcuts
-- Giveaways and events
-- Staff/community tools
+- Native ESN email/password accounts
+- Security-question password recovery
+- Encrypted Android session storage using Android Keystore
+- Server-verified admin accounts
+- Live ESN Credits balance
+- Member directory for admins
+- Store and official website access
+- Community, invite rewards, support, announcements and events surfaces
+- Session invalidation after password reset or permission changes
+- Rate-limited authentication endpoints
+- GitHub Actions verification for Android and backend
+- Docker-ready Node.js backend
 
-## Tech stack
+## Configuration
 
-- Kotlin
-- Jetpack Compose
-- Material 3
-- Android Gradle Plugin
-- GitHub Actions for automated builds
+Android builds read `ESN_API_BASE_URL` from the GitHub Actions secret with the same name. Production deployments must also set `ESN_SESSION_SECRET`, `ESN_ADMIN_EMAIL`, and persistent `ESN_MEMBER_DATA_FILE` storage for the backend.
 
-## Status
+The production API URL should use HTTPS.
 
-This repository contains the first native Android foundation for ESN Hub.
+## Build
+
+Android: `gradle :app:assembleDebug`
+
+Backend: `cd backend && npm test`
+
+## Release
+
+Current app version: **1.0.0**.
