@@ -18,8 +18,8 @@ android {
         applicationId = "com.esn.hub"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "0.4.0"
+        versionCode = 10
+        versionName = "1.0.0"
         buildConfigField("String", "ESN_WEBSITE_URL", "\"https://esnoffical.com\"")
         buildConfigField("String", "ESN_API_BASE_URL", "\"" + esnApiBaseUrl + "\"")
     }
